@@ -31,13 +31,10 @@ data Neuron f a =
   Neuron
     { neuronWeights :: f a
     , neuronBias    :: a
+    , neuronActFn   :: a -> a  -- | Aciviation function
     }
 
-data Dense f a =
-  Dense
-    { denseNeurons :: f (Neuron f a)
-    , activationFn :: a -> a
-    }
+type Dense f a = f (Neuron f a)
 
 data NeuronState f a =
   NeuronState
@@ -51,8 +48,10 @@ initDense :: (Traversable f, Monad m) =>
 initDense replicateM' size activationFn genWeight genBias = do
   weights <- replicateM' size (replicateM' size genWeight)
   biases  <- replicateM' size genBias
-  let neurons = zipWithTF Neuron weights biases
-  return $ Dense { denseNeurons = neurons, activationFn = activationFn }
+  let neurons = zipWithTF mkNeuron weights biases
+  return neurons
+  where
+    mkNeuron ws bs = Neuron ws bs activationFn
 
 sigmoid :: Floating a => a -> a
 sigmoid x = 1 / (1 + exp (-x))
@@ -70,20 +69,20 @@ softplus :: Floating a => a -> a
 softplus x = log (1 + exp x)
 
 densePreactivated :: (Metric f, Floating a) => Dense f a -> f a -> f (Neuron f a, a)
-densePreactivated Dense{denseNeurons} inputs =
+densePreactivated denseNeurons inputs =
   fmap (\n@Neuron{neuronWeights, neuronBias} ->
           (n, inputs `dot` neuronWeights + neuronBias))
        denseNeurons
 
 denseOutput :: (Metric f, Floating a) => Dense f a -> f a -> f (NeuronState f a)
-denseOutput d@Dense{activationFn} =
+denseOutput d =
   fmap go . densePreactivated d
   where
-    go (neuron, preact) =
+    go (neuron@Neuron{neuronActFn}, preact) =
       NeuronState
         { neuronStateNeuron = neuron
         , neuronStatePreact = preact
-        , neuronStateOutput = activationFn preact
+        , neuronStateOutput = neuronActFn preact
         }
 
 type LayerCtx f a = (Distributive f, Trace f, Index (f (f (NeuronState f a))) ~ Int, Index (f a) ~ Int,

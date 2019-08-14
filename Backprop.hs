@@ -2,7 +2,11 @@
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RankNTypes #-}
 
+-- {-# OPTIONS_GHC -Wall #-}
+
 module Backprop (backprop) where
+
+import           Prelude hiding (unzip)
 
 import           Control.Lens.At
 import           Control.Lens.Indexed
@@ -11,19 +15,17 @@ import           Control.Lens ((^?))
 import           Data.Traversable
 
 import           Linear.Vector
-import           Linear.Metric
 import           Linear.Trace
 import           Linear.Matrix
 
 import           Numeric.AD.Mode.Reverse
 
-
 import           Dense
 import           Utils
 
 
-backprop :: forall f a.  LayerCtx f a =>
-  a -> DiffFn -> f a -> f a -> f (f (NeuronState f a)) -> f (f (Neuron f a))
+backprop :: forall f a.  (LayerCtx f a) =>
+  a -> DiffFn -> f a -> f a -> f (f (NeuronState f a)) -> f (Dense f a)
 backprop stepSize sigma inputs expected layers =
   zipWithTF processOneLayer cwGrads layersAndDeltas
   where
@@ -34,13 +36,14 @@ backprop stepSize sigma inputs expected layers =
     processOneLayer grads (neuronStates, currDeltas) =
       zipWithTF processNeuron grads (zipTF neuronStates currDeltas)
 
-    processNeuron :: f a -> (NeuronState f a, a) -> Neuron f a
+    processNeuron :: f a -> (NeuronState f a, a) -> (Neuron f a)
     processNeuron grads (NeuronState{neuronStateNeuron}, delta) =
       Neuron
         { neuronWeights =
             neuronWeights neuronStateNeuron ^-^ (stepSize *^ grads)
         , neuronBias    =
             neuronBias neuronStateNeuron - (stepSize * delta)
+        , neuronActFn = neuronActFn neuronStateNeuron
         }
 
     layersAndDeltas = zipTF layers deltas
