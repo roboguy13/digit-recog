@@ -58,7 +58,7 @@ train stepSize sigma net ((currInput, currExpected):restTraining) =
     net' = backpropNet stepSize sigma currInput currExpected (computeNetState net currInput)
 
 -- | Percent accurate of identically correct results
-netTestAccuracy :: (LayerCtx f a, Eq a) =>
+netTestAccuracy :: (LayerCtx f a, Eq (f a)) =>
   a -> DiffFn -> (a -> a) -> Net f a -> f (f a) -> f (f a) -> Double
 netTestAccuracy stepSize sigma postprocess net testInputs testExpecteds =
   foldl' check 0 (zipTF netOutputs testExpecteds) / numTests
@@ -67,9 +67,7 @@ netTestAccuracy stepSize sigma postprocess net testInputs testExpecteds =
 
     numTests = fromIntegral $ length testInputs
 
-    check r (xs, ys) =
-      foldl' checkCase r $ zipWithTF (==) xs ys
-
-    checkCase r True = 1 + r
-    checkCase r False = r
+    check r (xs, ys)
+      | xs == ys = r + 1
+      | otherwise = r
 
