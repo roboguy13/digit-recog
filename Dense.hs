@@ -118,27 +118,43 @@ type DiffFn = forall a. (Floating a, Ord a, Eq a) => a -> a
 --           , neuronBias    = neuronBias
 --           }
 
--- backprop :: forall f a.  LayerCtx f a =>
---   DiffFn -> 
--- backprop
-
-costWeightGrad :: forall f a. LayerCtx f a =>
-  DiffFn -> f a -> f a ->
-  Maybe (f (NeuronState f a)) -> f (NeuronState f a) ->
-  Maybe (f (NeuronState f a), f a) -> f (f a)
-costWeightGrad sigma inputs expected maybePrevLayer currLayer maybeNext =
-  outer deltas prevA
+backprop :: forall f a.  LayerCtx f a =>
+  DiffFn -> f a -> f a -> f (f (NeuronState f a)) -> f (f (NeuronState f a))
+backprop sigma inputs expected layers =
+  let cwGrads = imap findCWGrad (zipTF layers deltas)
+  in undefined
   where
-    deltas = computeDeltas sigma expected currLayer maybeNext
+    deltas :: f (f a)
+    deltas = snd $ mapAccumR findDeltas Nothing layers
+
+    findDeltas maybeNext currLayer =
+      let currDeltas = computeDeltas sigma expected currLayer maybeNext
+      in (Just (currLayer, currDeltas), currDeltas)
+
+    findCWGrad currIx (currLayer, currDeltas) =
+      costWeightGrad inputs currDeltas
+                     (layers ^? ix (currIx-1))
+
+-- | In the result: The outermost "container" is indexed by incoming neuron
+-- index (j) and the innermost "container" is indexed by the outgoing neuron
+-- index (k)      (?)
+costWeightGrad :: forall f a. LayerCtx f a =>
+  f a -> f a ->
+  Maybe (f (NeuronState f a)) ->
+  f (f a)
+costWeightGrad inputs currDeltas maybePrevLayer =
+  outer currDeltas prevA
+  where
     prevA =
       case maybePrevLayer of
-        Nothing -> inputs
+        Nothing        -> inputs
         Just prevLayer -> fmap neuronStateOutput prevLayer
-        -- Just (NeuronState {neuronStateOutput}) -> neuronStateOutput
 
 
--- `maybeNext` is the next layer together with the deltas from the next
--- layer. `expected` is the expected outputs
+-- | `maybeNext` is the next layer together with the deltas from the next
+-- layer. `expected` is the expected outputs.
+--
+-- The result is the deltas for the given layer.
 computeDeltas :: forall f a. LayerCtx f a =>
   DiffFn -> f a ->
   f (NeuronState f a) -> Maybe (f (NeuronState f a), f a) -> f a
@@ -166,9 +182,12 @@ type LayerCtx f a = (Distributive f, Trace f, Index (f (f (NeuronState f a))) ~ 
      Metric f, TraversableWithIndex Int f, Ixed (f a), Ixed (f (f (NeuronState f a))),
      Floating a, Ord a)
 
--- This function is from:
+-- | This function is from:
 -- https://wiki.haskell.org/Foldable_and_Traversable#Generalising_zipWith
 zipWithTF :: (Traversable t, Foldable f) => (a -> b -> c) -> t a -> f b -> t c
 zipWithTF g t f = snd (mapAccumL map_one (toList f) t)
   where map_one (x:xs) y = (xs, g y x)
+
+zipTF :: (Traversable t, Foldable f) => t a -> f b -> t (a, b)
+zipTF = zipWithTF (,)
 
