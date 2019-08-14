@@ -4,6 +4,7 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE QuantifiedConstraints #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
@@ -17,8 +18,11 @@ import           Control.Lens.Indexed
 import           Linear.Vector
 import           Linear.Metric
 import           Linear.Trace
-import           Linear.Matrix
-import           Data.Distributive
+import           Linear.Matrix hiding (transpose)
+import           Data.List
+
+import           Data.Vector (Vector)
+import qualified Data.Vector as V
 
 import           Data.Foldable
 import           Data.Traversable
@@ -34,6 +38,10 @@ data Neuron f a =
     , neuronActFn   :: a -> a  -- | Aciviation function
     }
 
+-- | For testing and debugging purposes
+instance (Show a, Show (f a)) => Show (Neuron f a) where
+  show (Neuron ws bs _) = "Neuron (" ++ show ws ++ ", " ++ show bs ++ ")"
+
 type Dense f a = f (Neuron f a)
 
 data NeuronState f a =
@@ -42,6 +50,7 @@ data NeuronState f a =
     , neuronStatePreact :: a -- | "Preactivated" result (often called z)
     , neuronStateOutput :: a -- | Output
     }
+    deriving Show
 
 initDense :: (Traversable f, Monad m) =>
   (forall x. Int -> m x -> m (f x)) -> Int -> (a -> a) -> m a -> m a -> m (Dense f a)
@@ -85,7 +94,7 @@ denseOutput d =
         , neuronStateOutput = neuronActFn preact
         }
 
-type LayerCtx f a = (Distributive f, Trace f, Index (f (f (NeuronState f a))) ~ Int, Index (f a) ~ Int,
+type LayerCtx f a = (Transpose f, Trace f, Index (f (f (NeuronState f a))) ~ Int, Index (f a) ~ Int,
      Index (f (NeuronState f a)) ~ Int,
      Ixed (f (NeuronState f a)),
      IxValue (f (NeuronState f a)) ~ NeuronState f a,
@@ -93,4 +102,14 @@ type LayerCtx f a = (Distributive f, Trace f, Index (f (f (NeuronState f a))) ~ 
      IxValue (f a) ~ a,
      Metric f, TraversableWithIndex Int f, Ixed (f a), Ixed (f (f (NeuronState f a))),
      Floating a, Ord a)
+
+class Transpose f where
+  transpose' :: f (f a) -> f (f a)
+
+instance Transpose [] where
+  transpose' = transpose
+
+instance Transpose Vector where
+  transpose' m = -- TODO: Write a faster implementation
+    V.fromList (fmap V.fromList (transpose (V.toList (fmap V.toList m))))
 

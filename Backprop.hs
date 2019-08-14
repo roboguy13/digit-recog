@@ -1,6 +1,8 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE FlexibleContexts #-}
 
 -- {-# OPTIONS_GHC -Wall #-}
 
@@ -24,6 +26,8 @@ import           Dense
 import           Utils
 
 
+import Debug.Trace
+
 backprop :: forall f a.  (LayerCtx f a) =>
   a -> DiffFn -> f a -> f a -> f (f (NeuronState f a)) -> f (Dense f a)
 backprop stepSize sigma inputs expected layers =
@@ -34,6 +38,8 @@ backprop stepSize sigma inputs expected layers =
       f (f a) -> (f (NeuronState f a), f a) ->
       f (Neuron f a)
     processOneLayer grads (neuronStates, currDeltas) =
+      -- traceShow (length grads, length currDeltas) $
+      traceShow (length grads, length neuronStates, length currDeltas) $
       zipWithTF processNeuron grads (zipTF neuronStates currDeltas)
 
     processNeuron :: f a -> (NeuronState f a, a) -> (Neuron f a)
@@ -97,7 +103,7 @@ computeDeltas sigma expected currLayer maybeNext =
         let preacts = fmap neuronStatePreact currLayer -- z vector
             nextLayerWeightMat = fmap (neuronWeights . neuronStateNeuron)
                                       nextLayer
-        in hadamardVec (transpose nextLayerWeightMat !* nextDeltas)
+        in hadamardVec (transpose' nextLayerWeightMat !* nextDeltas)
                        (fmap sigmaDeriv preacts)
   where
     sigmaDeriv     = diff sigma

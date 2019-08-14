@@ -1,5 +1,8 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE LiberalTypeSynonyms #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE FlexibleContexts #-}
+
 module Net where
 
 import           Linear.Metric
@@ -45,22 +48,27 @@ netStateOutputs netState =
   fmap neuronStateOutput lastLayer
 
 backpropNet :: LayerCtx f a =>
-  a -> DiffFn -> f a -> f a -> NetState f a -> Net f a
-backpropNet = backprop
+  Int -> a -> DiffFn -> f a -> f a -> NetState f a -> Net f a
+backpropNet 0     _        _     _      _        netState = fmap (fmap neuronStateNeuron) netState
+backpropNet iters stepSize sigma inputs expected netState =
+  let net'      = backprop stepSize sigma inputs expected netState
+      netState' = computeNetState net' inputs
+  in
+  backpropNet (iters-1) stepSize sigma inputs expected netState'
 
 -- | Train a 'Net' on a list of (input, expected output) pairs, one at a time
 train :: LayerCtx f a =>
-  a -> DiffFn -> Net f a -> [(f a, f a)] -> Net f a
-train _        _     net []          = net
-train stepSize sigma net ((currInput, currExpected):restTraining) =
-  train stepSize sigma net' restTraining
+  Int -> a -> DiffFn -> Net f a -> [(f a, f a)] -> Net f a
+train iters _        _     net []          = net
+train iters stepSize sigma net ((currInput, currExpected):restTraining) =
+  train iters stepSize sigma net' restTraining
   where
-    net' = backpropNet stepSize sigma currInput currExpected (computeNetState net currInput)
+    net' = backpropNet iters stepSize sigma currInput currExpected (computeNetState net currInput)
 
 -- | Percent accurate of identically correct results
 netTestAccuracy :: (LayerCtx f a, Eq (f a)) =>
-  a -> DiffFn -> (a -> a) -> Net f a -> f (f a) -> f (f a) -> Double
-netTestAccuracy stepSize sigma postprocess net testInputs testExpecteds =
+  a -> DiffFn -> Net f a -> f (f a) -> f (f a) -> Double
+netTestAccuracy stepSize sigma net testInputs testExpecteds =
   foldl' check 0 (zipTF netOutputs testExpecteds) / numTests
   where
     netOutputs = fmap (netStateOutputs . computeNetState net) testInputs
@@ -68,6 +76,8 @@ netTestAccuracy stepSize sigma postprocess net testInputs testExpecteds =
     numTests = fromIntegral $ length testInputs
 
     check r (xs, ys)
-      | xs == ys = r + 1
-      | otherwise = r
+      | all withinTol (zipWithTF (-) xs ys) = r + 1
+      | otherwise                           = r
+
+    withinTol x = x <= 1e-6
 

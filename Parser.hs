@@ -1,4 +1,4 @@
-module Parser where
+module Parser (parseImages, parseLabels, Matrix) where
 
 import qualified Data.ByteString as BS
 import           Data.ByteString (ByteString)
@@ -15,17 +15,28 @@ import           Control.Monad
 
 type Matrix a = Vector (Vector a)
 
-parseVector :: ByteString -> Vector Word8
-parseVector =
-  V.fromList .
-  drop (4*2) .    -- Drop the magic number and the number of elements (two
-                  -- 4-byte integers)
-  BS.unpack
-
-parseImages :: Floating a => ByteString -> [Vector a]
-parseImages = map (join . fmap (fmap scale)) . parseMatrix
+parseImages :: Floating a => ByteString -> Matrix a
+parseImages = V.fromList . map (join . fmap (fmap scale)) . parseMatrix
   where
     scale = (/255) . fromIntegral
+
+
+-- | Using a one-hot encoding in the result
+parseLabels :: ByteString -> Matrix Bool
+parseLabels bytes =
+  let labelData = drop (4*2) (BS.unpack bytes)
+  in V.fromList $ map oneHotEncode labelData
+
+oneHotEncode :: Word8 -> Vector Bool
+oneHotEncode n
+  | n < 0 || n > 9 = error ("Invalid label: " ++ show n)
+  | otherwise =
+      V.fromList theList
+  where
+    theList =
+      replicate' n False ++ [True] ++ replicate' (9-n) False
+
+    replicate' = replicate . fromIntegral
 
 parseMatrix :: ByteString -> [Matrix Word8]
 parseMatrix bytes =
