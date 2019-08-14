@@ -39,6 +39,7 @@ hadamardMat a b = fmap diagonal $ liftI2 outer a b
 hadamardVec :: (Trace f, Additive f, Num a) => f a -> f a -> f a
 hadamardVec a b = diagonal $ outer a b
 
+type DiffFn = forall a. (Floating a, Ord a, Eq a) => a -> a
 
 data Neuron f a =
   Neuron
@@ -99,31 +100,34 @@ denseOutput d@Dense{activationFn} =
         , neuronStateOutput = activationFn preact
         }
 
-type DiffFn = forall a. (Floating a, Ord a, Eq a) => a -> a
-
--- backpropLayer :: (forall x. Index (f x) ~ Int, Metric f,
---                   TraversableWithIndex Int f, Ixed (f a), Floating a, Ord a) =>
---   DiffFn -> f a -> f (f (NeuronState f a)) -> Int -> f (NeuronState f a) -> Dense f a
--- backpropLayer sigma expected layers layerIx currLayer =
---     let grad = costGradientLayer sigma expected layers layerIx currLayer
---     in
---     Dense
---       { denseNeurons = fmap updateWeights grad
---       , activationFn = sigma
---       }
---     where
---       updateWeights (Neuron {neuronWeights, neuronBias}, weightDeltas) =
---         Neuron
---           { neuronWeights = zipWithTF (-) neuronWeights weightDeltas
---           , neuronBias    = neuronBias
---           }
-
 backprop :: forall f a.  LayerCtx f a =>
-  DiffFn -> f a -> f a -> f (f (NeuronState f a)) -> f (f (NeuronState f a))
-backprop sigma inputs expected layers =
-  let cwGrads = imap findCWGrad (zipTF layers deltas)
-  in undefined
+  a -> DiffFn -> f a -> f a -> f (f (NeuronState f a)) -> f (f (Neuron f a))
+backprop stepSize sigma inputs expected layers =
+  zipWithTF processOneLayer cwGrads layersAndDeltas
   where
+
+    processOneLayer ::
+      f (f a) -> (f (NeuronState f a), f a) ->
+      f (Neuron f a)
+    processOneLayer grads (neuronStates, deltas) =
+      zipWithTF processNeuron grads (zipTF neuronStates deltas)
+
+    processNeuron :: f a -> (NeuronState f a, a) -> Neuron f a
+    processNeuron grads (NeuronState{neuronStateNeuron}, delta) =
+      Neuron
+        { neuronWeights =
+            neuronWeights neuronStateNeuron ^-^ (stepSize *^ grads)
+        , neuronBias    =
+            neuronBias neuronStateNeuron - (stepSize * delta)
+        }
+
+    layersAndDeltas = zipTF layers deltas
+
+    -- | Indexed by layer, then by incoming neuron, then by outgoing neuron
+    -- (?)
+    cwGrads :: f (f (f a))
+    cwGrads = imap findCWGrad layersAndDeltas
+
     deltas :: f (f a)
     deltas = snd $ mapAccumR findDeltas Nothing layers
 
