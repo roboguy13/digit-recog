@@ -19,8 +19,11 @@ import           Control.Lens.Indexed
 import           Control.Lens.At
 import           Control.Lens ((^?))
 
+import           Data.List (genericLength)
+
 import           Dense
 import           Backprop
+import           Utils
 
 type Net      f a = f (Dense f a)
 type NetState f a = f (f (NeuronState f a))
@@ -53,4 +56,20 @@ train stepSize sigma net ((currInput, currExpected):restTraining) =
   train stepSize sigma net' restTraining
   where
     net' = backpropNet stepSize sigma currInput currExpected (computeNetState net currInput)
+
+-- | Percent accurate of identically correct results
+netTestAccuracy :: (LayerCtx f a, Eq a) =>
+  a -> DiffFn -> (a -> a) -> Net f a -> f (f a) -> f (f a) -> Double
+netTestAccuracy stepSize sigma postprocess net testInputs testExpecteds =
+  foldl' check 0 (zipTF netOutputs testExpecteds) / numTests
+  where
+    netOutputs = fmap (netStateOutputs . computeNetState net) testInputs
+
+    numTests = fromIntegral $ length testInputs
+
+    check r (xs, ys) =
+      foldl' checkCase r $ zipWithTF (==) xs ys
+
+    checkCase r True = 1 + r
+    checkCase r False = r
 
