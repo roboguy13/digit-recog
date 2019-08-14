@@ -17,20 +17,14 @@ import           Linear.Trace
 import           Linear.Matrix
 import           Data.Distributive
 
-import           Control.Monad
-import           Control.Arrow ((&&&))
-
 import           Data.Foldable
 import           Data.Traversable
-import qualified Data.Traversable as T
 
 import           Numeric.AD.Mode.Reverse
 
 import           Control.Lens.At
 import           Control.Lens.Indexed
 import           Control.Lens ((^?))
-
-import           Data.Constraint.Forall
 
 -- | Hadamard product
 hadamardMat :: (Trace f, Additive f, Num a) => f (f a) -> f (f a) -> f (f a)
@@ -109,8 +103,8 @@ backprop stepSize sigma inputs expected layers =
     processOneLayer ::
       f (f a) -> (f (NeuronState f a), f a) ->
       f (Neuron f a)
-    processOneLayer grads (neuronStates, deltas) =
-      zipWithTF processNeuron grads (zipTF neuronStates deltas)
+    processOneLayer grads (neuronStates, currDeltas) =
+      zipWithTF processNeuron grads (zipTF neuronStates currDeltas)
 
     processNeuron :: f a -> (NeuronState f a, a) -> Neuron f a
     processNeuron grads (NeuronState{neuronStateNeuron}, delta) =
@@ -126,7 +120,7 @@ backprop stepSize sigma inputs expected layers =
     -- | Indexed by layer, then by incoming neuron, then by outgoing neuron
     -- (?)
     cwGrads :: f (f (f a))
-    cwGrads = imap findCWGrad layersAndDeltas
+    cwGrads = imap findCWGrad deltas
 
     deltas :: f (f a)
     deltas = snd $ mapAccumR findDeltas Nothing layers
@@ -135,7 +129,7 @@ backprop stepSize sigma inputs expected layers =
       let currDeltas = computeDeltas sigma expected currLayer maybeNext
       in (Just (currLayer, currDeltas), currDeltas)
 
-    findCWGrad currIx (currLayer, currDeltas) =
+    findCWGrad currIx currDeltas =
       costWeightGrad inputs currDeltas
                      (layers ^? ix (currIx-1))
 
