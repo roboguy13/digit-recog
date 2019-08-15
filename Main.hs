@@ -56,7 +56,7 @@ main = do
         = zip (V.toList trainImages) (V.toList trainLabels)
 
   initialNet <-
-    initNet V.replicateM [10, 10, 10] actFn between0and1 between0and1
+    initNet V.replicateM [16, 16, 10] actFn between0and1 between0and1
       :: IO (Net Vector Double)
 
   let trainedNet = train 1 0.01 actFn initialNet (take 1 trainLabelsAndImages)

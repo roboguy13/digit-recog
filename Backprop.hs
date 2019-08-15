@@ -17,8 +17,8 @@ import           Control.Lens ((^?))
 import           Data.Traversable
 
 import           Linear.Vector
-import           Linear.Trace
-import           Linear.Matrix
+import           Linear.Trace hiding (trace)
+import           Linear.Matrix hiding (trace)
 
 import           Numeric.AD.Mode.Reverse
 
@@ -63,7 +63,7 @@ backprop stepSize sigma inputs expected layers =
     cwGrads = imap findCWGrad deltas
 
     deltas :: f (f a)
-    deltas = snd $ mapAccumL findDeltas Nothing layers
+    deltas = snd $ mapAccumR findDeltas Nothing layers
 
     findDeltas maybeNext currLayer =
       let currDeltas = computeDeltas sigma expected currLayer maybeNext
@@ -107,7 +107,11 @@ computeDeltas sigma expected currLayer maybeNext =
         let preacts = fmap neuronStatePreact currLayer -- z vector
             nextLayerWeightMat = fmap (neuronWeights . neuronStateNeuron)
                                       nextLayer
-        in hadamardVec (transpose' nextLayerWeightMat !* nextDeltas)
+        in
+        trace ("w shape: " ++ show (shape2 nextLayerWeightMat)) $
+        trace ("nextDeltas shape: " ++ show (shape1 nextDeltas)) $
+        trace ("preacts shape: " ++ show (shape1 preacts)) $
+          hadamardVec (transpose' nextLayerWeightMat !* nextDeltas)
                        (fmap sigmaDeriv preacts)
   where
     sigmaDeriv     = diff sigma
