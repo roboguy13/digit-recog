@@ -53,9 +53,9 @@ data NeuronState f a =
     deriving Show
 
 initDense :: (Traversable f, Monad m) =>
-  (forall x. Int -> m x -> m (f x)) -> Int -> (a -> a) -> m a -> m a -> m (Dense f a)
-initDense replicateM' size activationFn genWeight genBias = do
-  weights <- replicateM' size (replicateM' size genWeight)
+  (forall x. Int -> m x -> m (f x)) -> Int -> Int -> (a -> a) -> m a -> m a -> m (Dense f a)
+initDense replicateM' numInputs size activationFn genWeight genBias = do
+  weights <- replicateM' size (replicateM' numInputs genWeight)
   biases  <- replicateM' size genBias
   let neurons = zipWithTF mkNeuron weights biases
   return neurons

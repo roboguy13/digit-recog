@@ -7,6 +7,7 @@ import qualified Data.Vector as V
 import           Data.Vector (Vector)
 
 import           Control.Monad (replicateM)
+import           Control.Arrow ((&&&))
 import           System.Random
 
 import           Linear.Trace
@@ -14,6 +15,7 @@ import           Linear.Trace
 import           Net
 import           Dense (softplus)
 import           Parser
+import           Utils
 
 imageSize :: Int
 imageSize = 28*28
@@ -56,10 +58,14 @@ main = do
         = zip (V.toList trainImages) (V.toList trainLabels)
 
   initialNet <-
-    initNet V.replicateM [16, 16, 10] actFn between0and1 between0and1
+    initNet V.replicateM V.fromList imageSize [16, 16, 10] actFn between0and1 between0and1
       :: IO (Net Vector Double)
 
-  let trainedNet = train 1 0.01 actFn initialNet (take 1 trainLabelsAndImages)
+  print (shape2 trainLabels, shape2 trainImages)
+  print (fmap shape1 (V.take 10 trainLabels))
+  print (fmap shape1 (V.take 10 trainImages))
+
+  let trainedNet = train 1 0.01 actFn initialNet (take 2 trainLabelsAndImages)
 
   print (length trainImages)
   print trainedNet

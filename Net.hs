@@ -7,7 +7,7 @@ module Net where
 
 import           Linear.Metric
 import           Linear.Vector
-import           Linear.Matrix
+import           Linear.Matrix hiding (trace)
 
 import           Data.Functor.Compose
 
@@ -28,14 +28,20 @@ import           Dense
 import           Backprop
 import           Utils
 
+import Debug.Trace
+
 type Net      f a = f (Dense f a)
 type NetState f a = f (f (NeuronState f a))
 
 initNet :: (Traversable f, Monad m) =>
-  (forall x. Int -> m x -> m (f x)) -> f Int -> (a -> a) -> m a -> m a -> m (Net f a)
-initNet replicateM' sizes activationFn genWeight genBias =
-  mapM (\size -> initDense replicateM' size activationFn genWeight genBias)
-       sizes
+  (forall x. Int -> m x -> m (f x)) -> (forall x. [x] -> f x) -> Int -> f Int -> (a -> a) -> m a -> m a -> m (Net f a)
+initNet replicateM' fromList numInputs0 sizes0 activationFn genWeight genBias =
+  sequence (fromList (go numInputs0 (toList sizes0)))
+  where
+    go _         []           = []
+    go numInputs (size:sizes) =
+      initDense replicateM' numInputs size activationFn genWeight genBias
+        : go size sizes
 
 computeNetState :: (Metric f, Floating a) =>
   Net f a -> f a -> NetState f a
@@ -61,6 +67,8 @@ train :: LayerCtx f a =>
   Int -> a -> DiffFn -> Net f a -> [(f a, f a)] -> Net f a
 train iters _        _     net []          = net
 train iters stepSize sigma net ((currInput, currExpected):restTraining) =
+  trace ("net shape: " ++ show (raggedShape2 net)) $ -- XXX: The net shape is changing.
+                                                     -- This is probably an effect of the shape-mismatch crash bug
   train iters stepSize sigma net' restTraining
   where
     net' = backpropNet iters stepSize sigma currInput currExpected (computeNetState net currInput)
