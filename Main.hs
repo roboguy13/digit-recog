@@ -20,6 +20,9 @@ import           Utils
 imageSize :: Int
 imageSize = 28*28
 
+stepSize :: Double
+stepSize = 1
+
 between0and1 :: IO Double
 between0and1 = randomRIO (0,1)
 
@@ -36,6 +39,10 @@ instance Trace Vector where
     where
       size = V.length m
 
+classify :: Vector Double -> Vector Double
+classify v =
+  let idx = V.maxIndex v
+  in fmap boolToDouble (oneHotEncode (fromIntegral idx))
 
 main :: IO ()
 main = do
@@ -51,8 +58,9 @@ main = do
   let trainLabels = fmap (fmap boolToDouble) trainLabels0
       testLabels  = fmap (fmap boolToDouble) testLabels0
 
-  let sampleTestImages = V.take 50 testImages
-      sampleTestLabels = V.take 50 testLabels
+  -- let testSampleSize   = 1000
+  --     sampleTestImages = V.take testSampleSize testImages
+  --     sampleTestLabels = V.take testSampleSize testLabels
 
   let trainLabelsAndImages
         = zip (V.toList trainImages) (V.toList trainLabels)
@@ -61,14 +69,11 @@ main = do
     initNet V.replicateM V.fromList imageSize [16, 16, 10] actFn between0and1 between0and1
       :: IO (Net Vector Double)
 
-  print (shape2 trainLabels, shape2 trainImages)
-  print (fmap shape1 (V.take 10 trainLabels))
-  print (fmap shape1 (V.take 10 trainImages))
+  let trainedNet = train 2 stepSize actFn initialNet (take 700 trainLabelsAndImages)
 
-  let trainedNet = train 1 0.01 actFn initialNet (take 2 trainLabelsAndImages)
-
-  print (length trainImages)
   print trainedNet
 
-  -- print (netTestAccuracy 0.01 actFn trainedNet sampleTestImages sampleTestLabels)
+  putStr "Test accuracy: "
+  putStr (show (netTestAccuracy classify actFn trainedNet testImages testLabels*100))
+  putStrLn "%"
 

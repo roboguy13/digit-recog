@@ -26,26 +26,18 @@ import           Dense
 import           Utils
 
 
-import Debug.Trace
+-- import Debug.Trace
 
 backprop :: forall f a.  (LayerCtx f a) =>
   a -> DiffFn -> f a -> f a -> f (f (NeuronState f a)) -> f (Dense f a)
 backprop stepSize sigma inputs expected layers =
-  -- Debug.Trace.trace ("deltas shape: " ++ show (raggedShape2 deltas)) $
-  -- Debug.Trace.trace ("layersAndDeltas shape: " ++ show (shape1 layersAndDeltas)) $
-  -- trace ("(cwGrads, layersAndDeltas) shape: " ++ show (shape3 cwGrads, shape1 layersAndDeltas)) $
-  let result = zipWithTF processOneLayer cwGrads layersAndDeltas
-  in
-    -- trace ("result shape: " ++ show (raggedShape2 result))
-          result
+  zipWithTF processOneLayer cwGrads layersAndDeltas
   where
 
     processOneLayer ::
       f (f a) -> (f (NeuronState f a), f a) ->
       f (Neuron f a)
     processOneLayer grads (neuronStates, currDeltas) =
-      traceShow (shape2 grads, shape1 neuronStates, shape1 currDeltas) $
-      -- traceShow (shape2 grads, shape1 neuronStates, shape1 currDeltas, shape2 deltas, shape3 cwGrads) $
       zipWithTF processNeuron grads (zipTF neuronStates currDeltas)
 
     processNeuron :: f a -> (NeuronState f a, a) -> (Neuron f a)
@@ -87,7 +79,6 @@ costWeightGrad :: forall f a. LayerCtx f a =>
 costWeightGrad inputs currDeltas maybePrevLayer =
   let result = outer currDeltas prevA
   in result
-  -- in Debug.Trace.trace ("cwgrad shape: " ++ show (shape2 result)) result
   where
     prevA =
       case maybePrevLayer of
@@ -113,10 +104,6 @@ computeDeltas sigma expected currLayer maybeNext =
             nextLayerWeightMat = fmap (neuronWeights . neuronStateNeuron)
                                       nextLayer
         in
-        -- trace (unlines ["w shape: " ++ show (raggedShape2 nextLayerWeightMat)
-        --                ,"nextDeltas shape: " ++ show (shape1 nextDeltas)
-        --                ,"preacts shape: " ++ show (shape1 preacts)
-        --                ,"transpose prod shape: " ++ show (shape1 (transpose' nextLayerWeightMat !* nextDeltas))]) $
           hadamardVec (transpose' nextLayerWeightMat !* nextDeltas)
                       (fmap sigmaDeriv preacts)
   where
@@ -130,8 +117,6 @@ hadamardVec :: (Foldable f, Trace f, Additive f, Num a) => f a -> f a -> f a
 hadamardVec a b =
   let result = diagonal $ outer a b
   in
-    -- Debug.Trace.trace ("Hadmard input sizes: " ++ show (length a, length b)) $
-    -- Debug.Trace.trace ("Hadamard size: " ++ show (length result)) $
     result
 
 

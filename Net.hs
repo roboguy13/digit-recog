@@ -28,7 +28,7 @@ import           Dense
 import           Backprop
 import           Utils
 
-import Debug.Trace
+-- import Debug.Trace
 
 type Net      f a = f (Dense f a)
 type NetState f a = f (f (NeuronState f a))
@@ -67,16 +67,14 @@ train :: LayerCtx f a =>
   Int -> a -> DiffFn -> Net f a -> [(f a, f a)] -> Net f a
 train iters _        _     net []          = net
 train iters stepSize sigma net ((currInput, currExpected):restTraining) =
-  trace ("net shape: " ++ show (raggedShape2 net)) $ -- XXX: The net shape is changing.
-                                                     -- This is probably an effect of the shape-mismatch crash bug
   train iters stepSize sigma net' restTraining
   where
     net' = backpropNet iters stepSize sigma currInput currExpected (computeNetState net currInput)
 
 -- | Percent accurate of identically correct results
 netTestAccuracy :: (LayerCtx f a, Eq (f a)) =>
-  a -> DiffFn -> Net f a -> f (f a) -> f (f a) -> Double
-netTestAccuracy stepSize sigma net testInputs testExpecteds =
+  (f a -> f a) -> DiffFn -> Net f a -> f (f a) -> f (f a) -> Double
+netTestAccuracy classify sigma net testInputs testExpecteds =
   foldl' check 0 (zipTF netOutputs testExpecteds) / numTests
   where
     netOutputs = fmap (netStateOutputs . computeNetState net) testInputs
@@ -84,8 +82,8 @@ netTestAccuracy stepSize sigma net testInputs testExpecteds =
     numTests = fromIntegral $ length testInputs
 
     check r (xs, ys)
-      | all withinTol (zipWithTF (-) xs ys) = r + 1
-      | otherwise                           = r
+      | all withinTol (zipWithTF (-) (classify xs) ys) = r + 1
+      | otherwise = r
 
     withinTol x = x <= 1e-6
 

@@ -1,4 +1,4 @@
-module Parser (parseImages, parseLabels, Matrix) where
+module Parser (parseImages, parseLabels, oneHotEncode, Matrix) where
 
 import qualified Data.ByteString as BS
 import           Data.ByteString (ByteString)
