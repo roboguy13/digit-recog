@@ -19,3 +19,14 @@ zipWithTF g t f = snd (mapAccumL map_one (toList f) t)
 zipTF :: HasCallStack => (Traversable t, Foldable f) => t a -> f b -> t (a, b)
 zipTF = zipWithTF (,)
 
+shape1 :: Foldable f => f a -> Int
+shape1 = length
+
+shape2 :: Foldable f => f (f a) -> (Int, Int)
+shape2 xs = (shape1 xs, length (head (toList xs)))
+
+shape3 :: Foldable f => f (f (f a)) -> (Int, Int, Int)
+shape3 xs =
+  let (a, b) = shape2 xs
+  in (a, b, length (head (toList (head (toList xs)))))
+

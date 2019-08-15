@@ -35,7 +35,7 @@ data Neuron f a =
   Neuron
     { neuronWeights :: f a
     , neuronBias    :: a
-    , neuronActFn   :: a -> a  -- | Aciviation function
+    , neuronActFn   :: a -> a  -- | Activation function
     }
 
 -- | For testing and debugging purposes

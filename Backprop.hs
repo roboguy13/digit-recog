@@ -39,7 +39,7 @@ backprop stepSize sigma inputs expected layers =
       f (Neuron f a)
     processOneLayer grads (neuronStates, currDeltas) =
       -- traceShow (length grads, length currDeltas) $
-      traceShow (length grads, length neuronStates, length currDeltas) $
+      traceShow (shape2 grads, shape1 neuronStates, shape1 currDeltas, shape2 deltas, shape3 cwGrads) $
       zipWithTF processNeuron grads (zipTF neuronStates currDeltas)
 
     processNeuron :: f a -> (NeuronState f a, a) -> (Neuron f a)
@@ -60,7 +60,7 @@ backprop stepSize sigma inputs expected layers =
     cwGrads = imap findCWGrad deltas
 
     deltas :: f (f a)
-    deltas = snd $ mapAccumR findDeltas Nothing layers
+    deltas = snd $ mapAccumL findDeltas Nothing layers
 
     findDeltas maybeNext currLayer =
       let currDeltas = computeDeltas sigma expected currLayer maybeNext
