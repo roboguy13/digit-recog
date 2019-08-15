@@ -19,8 +19,7 @@ imageSize :: Int
 imageSize = 28*28
 
 between0and1 :: IO Double
-between0and1 =
-  fst <$> randomR (0,1) <$> getStdGen
+between0and1 = randomRIO (0,1)
 
 actFn :: Floating a => a -> a
 actFn = softplus
@@ -33,6 +32,8 @@ instance Trace Vector
 
 main :: IO ()
 main = do
+  setStdGen (mkStdGen 27)
+
   trainLabels0 <- parseLabels <$> BS.readFile "images/train/train-labels-idx1-ubyte"
   trainImages <- parseImages <$> BS.readFile "images/train/train-images-idx3-ubyte"
 
@@ -50,10 +51,10 @@ main = do
         = zip (V.toList trainImages) (V.toList trainLabels)
 
   initialNet <-
-    initNet V.replicateM [16, 16, 10] actFn between0and1 between0and1
+    initNet V.replicateM [10, 10, 10] actFn between0and1 between0and1
       :: IO (Net Vector Double)
 
-  let trainedNet = train 1 0.01 actFn initialNet (take 5 trainLabelsAndImages)
+  let trainedNet = train 1 0.01 actFn initialNet (take 1 trainLabelsAndImages)
 
   print (length trainImages)
   print trainedNet
