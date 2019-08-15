@@ -28,7 +28,12 @@ boolToDouble :: Bool -> Double
 boolToDouble False = 0
 boolToDouble True  = 1
 
-instance Trace Vector
+instance Trace Vector where
+  diagonal m =
+    V.fromList $ map (\i -> (m V.! i) V.! i) [0..size-1]
+    where
+      size = V.length m
+
 
 main :: IO ()
 main = do

@@ -30,3 +30,7 @@ shape3 xs =
   let (a, b) = shape2 xs
   in (a, b, length (head (toList (head (toList xs)))))
 
+raggedShape2 :: Foldable f => f (f a) -> (Int, [Int])
+raggedShape2 xs =
+  (shape1 xs, map length (toList xs))
+

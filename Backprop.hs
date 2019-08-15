@@ -31,6 +31,8 @@ import Debug.Trace
 backprop :: forall f a.  (LayerCtx f a) =>
   a -> DiffFn -> f a -> f a -> f (f (NeuronState f a)) -> f (Dense f a)
 backprop stepSize sigma inputs expected layers =
+  Debug.Trace.trace ("deltas shape: " ++ show (raggedShape2 deltas)) $
+  Debug.Trace.trace ("layersAndDeltas shape: " ++ show (shape1 layersAndDeltas)) $
   zipWithTF processOneLayer cwGrads layersAndDeltas
   where
 
@@ -52,6 +54,7 @@ backprop stepSize sigma inputs expected layers =
         , neuronActFn = neuronActFn neuronStateNeuron
         }
 
+    layersAndDeltas :: f (f (NeuronState f a), f a)
     layersAndDeltas = zipTF layers deltas
 
     -- | Indexed by layer, then by incoming neuron, then by outgoing neuron
@@ -78,7 +81,8 @@ costWeightGrad :: forall f a. LayerCtx f a =>
   Maybe (f (NeuronState f a)) ->
   f (f a)
 costWeightGrad inputs currDeltas maybePrevLayer =
-  outer currDeltas prevA
+  let result = outer currDeltas prevA
+  in Debug.Trace.trace ("cwgrad shape: " ++ show (shape2 result)) result
   where
     prevA =
       case maybePrevLayer of
@@ -112,7 +116,12 @@ computeDeltas sigma expected currLayer maybeNext =
 hadamardMat :: (Trace f, Additive f, Num a) => f (f a) -> f (f a) -> f (f a)
 hadamardMat a b = fmap diagonal $ liftI2 outer a b
 
-hadamardVec :: (Trace f, Additive f, Num a) => f a -> f a -> f a
-hadamardVec a b = diagonal $ outer a b
+hadamardVec :: (Foldable f, Trace f, Additive f, Num a) => f a -> f a -> f a
+hadamardVec a b =
+  let result = diagonal $ outer a b
+  in
+    Debug.Trace.trace ("Hadmard input sizes: " ++ show (length a, length b)) $
+    Debug.Trace.trace ("Hadamard size: " ++ show (length result)) $
+    result
 
 
