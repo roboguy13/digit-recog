@@ -83,9 +83,9 @@ densePreactivated denseNeurons inputs =
           (n, inputs `dot` neuronWeights + neuronBias))
        denseNeurons
 
-denseOutput :: (Metric f, Floating a) => Dense f a -> f a -> f (NeuronState f a)
-denseOutput d =
-  fmap go . densePreactivated d
+-- | Takes an result from 'densePreactivated' as its argument
+denseActivated :: (Metric f, Floating a) => f (Neuron f a, a) -> f (NeuronState f a)
+denseActivated = fmap go
   where
     go (neuron@Neuron{neuronActFn}, preact) =
       NeuronState
@@ -94,8 +94,14 @@ denseOutput d =
         , neuronStateOutput = neuronActFn preact
         }
 
+denseOutput :: (Metric f, Floating a) => Dense f a -> f a -> f (NeuronState f a)
+denseOutput d = denseActivated . densePreactivated d
+
 type LayerCtx f a = (Transpose f, Trace f, Index (f (f (NeuronState f a))) ~ Int, Index (f a) ~ Int,
+     Index (f (f (Neuron f a))) ~ Int,
+     IxValue (f (f (Neuron f a))) ~ f (Neuron f a),
      Index (f (NeuronState f a)) ~ Int,
+     Ixed (f (f (Neuron f a))),
      Ixed (f (NeuronState f a)),
      IxValue (f (NeuronState f a)) ~ NeuronState f a,
      IxValue (f (f (NeuronState f a))) ~ f (NeuronState f a),

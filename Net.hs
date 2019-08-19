@@ -2,6 +2,7 @@
 {-# LANGUAGE LiberalTypeSynonyms #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module Net where
 
@@ -53,23 +54,37 @@ netStateOutputs netState =
   in
   fmap neuronStateOutput lastLayer
 
-backpropNet :: LayerCtx f a =>
-  Int -> a -> DiffFn -> f a -> f a -> NetState f a -> Net f a
-backpropNet 0     _        _     _      _        netState = fmap (fmap neuronStateNeuron) netState
-backpropNet iters stepSize sigma inputs expected netState =
-  let net'      = backprop stepSize sigma inputs expected netState
-      netState' = computeNetState net' inputs
-  in
-  backpropNet (iters-1) stepSize sigma inputs expected netState'
-
--- | Train a 'Net' on a list of (input, expected output) pairs, one at a time
-train :: LayerCtx f a =>
-  Int -> a -> DiffFn -> Net f a -> [(f a, f a)] -> Net f a
-train iters _        _     net []          = net
-train iters stepSize sigma net ((currInput, currExpected):restTraining) =
-  train iters stepSize sigma net' restTraining
+train :: forall f a. LayerCtx f a =>
+  Int -> a -> DiffFn -> Net f a -> f (f (f a, f a)) -> Net f a
+train nPasses stepSize sigma net0 minibatches =
+    go nPasses net0
   where
-    net' = backpropNet iters stepSize sigma currInput currExpected (computeNetState net currInput)
+    go 0       net = net
+    go nPasses net =
+      go (nPasses-1) (onePass net minibatches)
+
+    onePass :: Net f a -> f (f a, f a) -> Net f a
+    onePass net [] = net
+    onePass net (currMinibatch:restMinibatches) =
+      onePass (backprop stepSize sigma currMinibatch (computeNetState net)) restMinibatches
+    
+
+-- train :: LayerCtx f a =>
+--   Int -> a -> DiffFn -> Net f a -> [(f a, f a)] -> Net f a
+-- train 0     _        _     net _            = net
+-- train iters stepSize sigma net trainingData =
+--   let net' = trainOnce stepSize sigma net trainingData
+--   in
+--   train (iters-1) stepSize sigma net' trainingData
+
+-- trainOnce :: LayerCtx f a =>
+--   a -> DiffFn -> Net f a -> [(f a, f a)] -> Net f a
+-- trainOnce stepSize sigma net [] = net
+-- trainOnce stepSize sigma net ((currInput, currExpected):restTraining) =
+--   let net' = backprop stepSize sigma currInput currExpected (computeNetState net currInput)
+--   in
+--   trainOnce stepSize sigma net' restTraining
+
 
 -- | Percent accurate of identically correct results
 netTestAccuracy :: (LayerCtx f a, Eq (f a)) =>

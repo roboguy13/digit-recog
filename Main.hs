@@ -13,7 +13,7 @@ import           System.Random
 import           Linear.Trace
 
 import           Net
-import           Dense (softplus)
+import           Dense (softplus, sigmoid, reLU)
 import           Parser
 import           Utils
 
@@ -21,13 +21,14 @@ imageSize :: Int
 imageSize = 28*28
 
 stepSize :: Double
-stepSize = 1
+-- stepSize = 0.6
+stepSize = 0.6
 
 between0and1 :: IO Double
 between0and1 = randomRIO (0,1)
 
 actFn :: Floating a => a -> a
-actFn = softplus
+actFn = sigmoid
 
 boolToDouble :: Bool -> Double
 boolToDouble False = 0
@@ -46,7 +47,7 @@ classify v =
 
 main :: IO ()
 main = do
-  setStdGen (mkStdGen 27)
+  setStdGen (mkStdGen 200)
 
   trainLabels0 <- parseLabels <$> BS.readFile "images/train/train-labels-idx1-ubyte"
   trainImages <- parseImages <$> BS.readFile "images/train/train-images-idx3-ubyte"
@@ -58,9 +59,9 @@ main = do
   let trainLabels = fmap (fmap boolToDouble) trainLabels0
       testLabels  = fmap (fmap boolToDouble) testLabels0
 
-  -- let testSampleSize   = 1000
-  --     sampleTestImages = V.take testSampleSize testImages
-  --     sampleTestLabels = V.take testSampleSize testLabels
+  let testSampleSize   = 1000
+      sampleTestImages = V.take testSampleSize testImages
+      sampleTestLabels = V.take testSampleSize testLabels
 
   let trainLabelsAndImages
         = zip (V.toList trainImages) (V.toList trainLabels)
@@ -69,11 +70,11 @@ main = do
     initNet V.replicateM V.fromList imageSize [16, 16, 10] actFn between0and1 between0and1
       :: IO (Net Vector Double)
 
-  let trainedNet = train 2 stepSize actFn initialNet (take 700 trainLabelsAndImages)
+  let trainedNet = train 5 stepSize actFn initialNet (take 6000 trainLabelsAndImages)
 
-  print trainedNet
+  -- print trainedNet
 
   putStr "Test accuracy: "
-  putStr (show (netTestAccuracy classify actFn trainedNet testImages testLabels*100))
+  putStr (show (netTestAccuracy classify actFn trainedNet sampleTestImages sampleTestLabels*100))
   putStrLn "%"
 
