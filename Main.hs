@@ -70,7 +70,7 @@ main = do
     initNet V.replicateM V.fromList imageSize [16, 16, 10] actFn between0and1 between0and1
       :: IO (Net Vector Double)
 
-  let trainedNet = train 5 stepSize actFn initialNet (take 6000 trainLabelsAndImages)
+  let trainedNet = train 1 stepSize actFn initialNet [V.fromList $ take 6000 trainLabelsAndImages]
 
   -- print trainedNet
 

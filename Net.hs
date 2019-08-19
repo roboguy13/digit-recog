@@ -55,7 +55,7 @@ netStateOutputs netState =
   fmap neuronStateOutput lastLayer
 
 train :: forall f a. LayerCtx f a =>
-  Int -> a -> DiffFn -> Net f a -> f (f (f a, f a)) -> Net f a
+  Int -> a -> DiffFn -> Net f a -> [f (f a, f a)] -> Net f a
 train nPasses stepSize sigma net0 minibatches =
     go nPasses net0
   where
@@ -63,28 +63,11 @@ train nPasses stepSize sigma net0 minibatches =
     go nPasses net =
       go (nPasses-1) (onePass net minibatches)
 
-    onePass :: Net f a -> f (f a, f a) -> Net f a
+    onePass :: Net f a -> [f (f a, f a)] -> Net f a
     onePass net [] = net
     onePass net (currMinibatch:restMinibatches) =
-      onePass (backprop stepSize sigma currMinibatch (computeNetState net)) restMinibatches
+      onePass (backprop stepSize sigma currMinibatch net) restMinibatches
     
-
--- train :: LayerCtx f a =>
---   Int -> a -> DiffFn -> Net f a -> [(f a, f a)] -> Net f a
--- train 0     _        _     net _            = net
--- train iters stepSize sigma net trainingData =
---   let net' = trainOnce stepSize sigma net trainingData
---   in
---   train (iters-1) stepSize sigma net' trainingData
-
--- trainOnce :: LayerCtx f a =>
---   a -> DiffFn -> Net f a -> [(f a, f a)] -> Net f a
--- trainOnce stepSize sigma net [] = net
--- trainOnce stepSize sigma net ((currInput, currExpected):restTraining) =
---   let net' = backprop stepSize sigma currInput currExpected (computeNetState net currInput)
---   in
---   trainOnce stepSize sigma net' restTraining
-
 
 -- | Percent accurate of identically correct results
 netTestAccuracy :: (LayerCtx f a, Eq (f a)) =>

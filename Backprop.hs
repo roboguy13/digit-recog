@@ -3,8 +3,10 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE QuantifiedConstraints #-}
 
 -- {-# OPTIONS_GHC -Wall #-}
+
 
 module Backprop (backprop) where
 
@@ -26,11 +28,12 @@ import           Dense
 import           Utils
 
 
--- import Debug.Trace
+import Debug.Trace
 
 backprop :: forall f a.  (LayerCtx f a) =>
   a -> DiffFn -> f (f a, f a) -> f (f (Neuron f a)) -> f (Dense f a)
 backprop stepSize sigma minibatch layers =
+  trace (show (shape3 cwGrads, shape1 layersAndDeltas, shape3 deltas)) $
   zipWithTF processOneLayer cwGrads layersAndDeltas
   where
 
@@ -38,9 +41,10 @@ backprop stepSize sigma minibatch layers =
       f (f (f a)) -> (f (Neuron f a), f (f a)) ->
       f (Neuron f a)
     processOneLayer grads (neuronStates, currDeltas) =
-      zipWithTF processNeuron grads (zipTF neuronStates currDeltas)
+      trace ("processOneLayer: " ++ show (shape3 grads, shape1 neuronStates, shape2 currDeltas)) $
+      zipWithTF processNeuron (transpose' grads) (zipTF neuronStates (transpose' currDeltas))
 
-    processNeuron :: f (f a) -> (Neuron f a, f a) -> (Neuron f a)
+    processNeuron :: f (f a) -> (Neuron f a, f a) -> Neuron f a
     processNeuron grads (neuron, delta) =
       Neuron
         { neuronWeights =
@@ -57,22 +61,26 @@ backprop stepSize sigma minibatch layers =
         }
 
     layersAndDeltas :: f (f (Neuron f a), f (f a))
-    layersAndDeltas = zipTF layers deltas
+    layersAndDeltas =
+      trace ("layersAndDeltas: " ++ show (shape2 layers, shape3 deltas)) $
+      zipTF layers deltas
 
     -- | Indexed by mini-batch index, then by layer, then by incoming neuron, then by outgoing neuron
     -- (?)
     cwGrads :: f (f (f (f a)))
-    cwGrads =
+    cwGrads = transpose' $
+      -- trace ("cwGrads: " ++ show (shape1 minibatch, shape3 deltas)) $
       zipWithTF
         (\currInputs currDeltas -> imap (findCWGrad currInputs) currDeltas)
         (fmap fst minibatch)
-        deltas
+        (transpose' deltas)
 
     -- Indexed first by mini-batch index
     deltas :: f (f (f a))
     deltas =
+      transpose' $
       fmap (\(currInputs, currExpected) ->
-                  snd $ mapAccumR (findDeltas currExpected) Nothing _)
+                  snd $ mapAccumR (findDeltas currExpected) Nothing (fmap (`denseOutput` currInputs) layers))
            minibatch
 
     findDeltas :: f a
@@ -134,9 +142,5 @@ hadamardMat :: (Trace f, Additive f, Num a) => f (f a) -> f (f a) -> f (f a)
 hadamardMat a b = fmap diagonal $ liftI2 outer a b
 
 hadamardVec :: (Foldable f, Trace f, Additive f, Num a) => f a -> f a -> f a
-hadamardVec a b =
-  let result = diagonal $ outer a b
-  in
-    result
-
+hadamardVec a b = diagonal $ outer a b
 
