@@ -13,7 +13,7 @@ import           Linear.Matrix hiding (trace)
 import           Data.Functor.Compose
 
 import           Data.Foldable
-import           Data.List (mapAccumL)
+import           Data.List (mapAccumL, mapAccumR)
 
 import           Numeric.AD.Mode.Reverse
 
@@ -29,10 +29,7 @@ import           Dense
 import           Backprop
 import           Utils
 
--- import Debug.Trace
-
-type Net      f a = f (Dense f a)
-type NetState f a = f (f (NeuronState f a))
+import Debug.Trace
 
 initNet :: (Traversable f, Monad m) =>
   (forall x. Int -> m x -> m (f x)) -> (forall x. [x] -> f x) -> Int -> f Int -> (a -> a) -> m a -> m a -> m (Net f a)
@@ -44,9 +41,6 @@ initNet replicateM' fromList numInputs0 sizes0 activationFn genWeight genBias =
       initDense replicateM' numInputs size activationFn genWeight genBias
         : go size sizes
 
-computeNetState :: (Metric f, Floating a) =>
-  Net f a -> f a -> NetState f a
-computeNetState net inputs = fmap (`denseOutput` inputs) net
 
 netStateOutputs :: LayerCtx f a => NetState f a -> f a
 netStateOutputs netState =
@@ -54,7 +48,7 @@ netStateOutputs netState =
   in
   fmap neuronStateOutput lastLayer
 
-train :: forall f a. LayerCtx f a =>
+train :: forall f a. (Show a, LayerCtx f a) =>
   Int -> a -> DiffFn -> Net f a -> [f (f a, f a)] -> Net f a
 train nPasses stepSize sigma net0 minibatches =
     go nPasses net0
@@ -66,11 +60,11 @@ train nPasses stepSize sigma net0 minibatches =
     onePass :: Net f a -> [f (f a, f a)] -> Net f a
     onePass net [] = net
     onePass net (currMinibatch:restMinibatches) =
-      onePass (backprop stepSize sigma currMinibatch net) restMinibatches
+      onePass (backprop (length currMinibatch) stepSize sigma currMinibatch net) restMinibatches
     
 
 -- | Percent accurate of identically correct results
-netTestAccuracy :: (LayerCtx f a, Eq (f a)) =>
+netTestAccuracy :: (Show (f a), Show (f (f a)), LayerCtx f a, Eq (f a)) =>
   (f a -> f a) -> DiffFn -> Net f a -> f (f a) -> f (f a) -> Double
 netTestAccuracy classify sigma net testInputs testExpecteds =
   foldl' check 0 (zipTF netOutputs testExpecteds) / numTests

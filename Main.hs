@@ -12,8 +12,15 @@ import           System.Random
 
 import           Linear.Trace
 
+import           Data.List.Split (chunksOf)
+import           Data.List (nub)
+
+import           Linear.Vector
+
+
 import           Net
 import           Dense (softplus, sigmoid, reLU)
+import           Backprop (Net, computeNetState)
 import           Parser
 import           Utils
 
@@ -22,7 +29,7 @@ imageSize = 28*28
 
 stepSize :: Double
 -- stepSize = 0.6
-stepSize = 0.6
+stepSize = 0.2
 
 between0and1 :: IO Double
 between0and1 = randomRIO (0,1)
@@ -47,7 +54,8 @@ classify v =
 
 main :: IO ()
 main = do
-  setStdGen (mkStdGen 200)
+  -- setStdGen (mkStdGen 200)
+  setStdGen (mkStdGen 203)
 
   trainLabels0 <- parseLabels <$> BS.readFile "images/train/train-labels-idx1-ubyte"
   trainImages <- parseImages <$> BS.readFile "images/train/train-images-idx3-ubyte"
@@ -70,9 +78,22 @@ main = do
     initNet V.replicateM V.fromList imageSize [16, 16, 10] actFn between0and1 between0and1
       :: IO (Net Vector Double)
 
-  let trainedNet = train 1 stepSize actFn initialNet [V.fromList $ take 6000 trainLabelsAndImages]
+  -- let trainedNet = train 1 stepSize actFn initialNet [V.fromList $ take 6000 trainLabelsAndImages]
+  let trainedNet =
+        train 3 stepSize actFn initialNet (take 10 (map V.fromList $ chunksOf 100 trainLabelsAndImages))
 
   -- print trainedNet
+
+  putStrLn $ "Unique count: " ++ show (length (nub (V.toList sampleTestImages)))
+
+  putStr "A: "
+  print . netStateOutputs $ computeNetState trainedNet (sampleTestImages V.! 0)
+  putStrLn ""
+  putStr "B: "
+  print . netStateOutputs $ computeNetState trainedNet (sampleTestImages V.! 1)
+
+  print $ ((sampleTestImages V.! 0) ^-^ (sampleTestImages V.! 1))
+  -- print $ sampleTestImages V.! 1
 
   putStr "Test accuracy: "
   putStr (show (netTestAccuracy classify actFn trainedNet sampleTestImages sampleTestLabels*100))

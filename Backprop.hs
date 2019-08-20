@@ -8,7 +8,7 @@
 -- {-# OPTIONS_GHC -Wall #-}
 
 
-module Backprop (backprop) where
+module Backprop (backprop, Net, NetState, computeNetState) where
 
 import           Prelude hiding (unzip)
 
@@ -21,6 +21,7 @@ import           Data.Traversable
 import           Linear.Vector
 import           Linear.Trace hiding (trace)
 import           Linear.Matrix hiding (trace)
+import           Linear.Metric
 
 import           Numeric.AD.Mode.Reverse
 
@@ -30,12 +31,33 @@ import           Utils
 
 import Debug.Trace
 
-backprop :: forall f a.  (LayerCtx f a) =>
-  a -> DiffFn -> f (f a, f a) -> f (f (Neuron f a)) -> f (Dense f a)
-backprop stepSize sigma minibatch layers =
+
+type Net      f a = f (Dense f a)
+type NetState f a = f (f (NeuronState f a))
+
+-- Feedforward
+computeNetState :: (Traversable f, Metric f, Floating a, Index (Net f a) ~ Int, IxValue (Net f a) ~ Dense f a, Ixed (Net f a)) =>
+  Net f a -> f a -> NetState f a
+computeNetState net inputs =
+    snd $ mapAccumL go Nothing net
+  where
+    go Nothing currLayer =
+      let currOutputs = denseOutput currLayer inputs
+      in (Just currOutputs, currOutputs)
+
+    go (Just prevOutputs) currLayer =
+      let currOutputs = denseOutput currLayer (fmap neuronStateOutput prevOutputs)
+      in (Just currOutputs, currOutputs)
+
+backprop :: forall f a.  (Show a, LayerCtx f a) =>
+  Int -> a -> DiffFn -> f (f a, f a) -> f (f (Neuron f a)) -> f (Dense f a)
+backprop minibatchSize stepSize sigma minibatch layers =
   trace (show (shape3 cwGrads, shape1 layersAndDeltas, shape3 deltas)) $
   zipWithTF processOneLayer cwGrads layersAndDeltas
   where
+    -- | Indexed by mini-batch index
+    netStates :: f (NetState f a)
+    netStates = fmap (computeNetState layers . fst) minibatch
 
     processOneLayer ::
       f (f (f a)) -> (f (Neuron f a), f (f a)) ->
@@ -46,19 +68,30 @@ backprop stepSize sigma minibatch layers =
 
     processNeuron :: f (f a) -> (Neuron f a, f a) -> Neuron f a
     processNeuron grads (neuron, delta) =
+      -- trace ("weightsSum shape: " ++ show (shape1 weightsSum))
+      (if (shape1 weightsSum /= shape1 (neuronWeights neuron)) then trace "Shape does not match" else id) $
       Neuron
         { neuronWeights =
+            neuronWeights neuron ^-^ ((stepSize / fromIntegral minibatchSize) *^ weightsSum)
+        , neuronBias    =
+            neuronBias neuron - ((stepSize / fromIntegral minibatchSize) * biasSum)
+        , neuronActFn = neuronActFn neuron
+        }
+      where
+        weightsSum =
+          -- trace ("neuronWeights shape: " ++ show (shape1 (neuronWeights neuron))) $
             foldr (^+^) zero $
               fmap (\currGrads -> 
                       neuronWeights neuron ^-^ (stepSize *^ currGrads))
                    grads
-        , neuronBias    =
-            sum $
-              fmap (\currDelta ->
-                      neuronBias neuron - (stepSize * currDelta))
-                   delta
-        , neuronActFn = neuronActFn neuron
-        }
+
+        biasSum =
+          -- trace ("delta shape: " ++ show (shape1 delta)) $
+          -- traceShowId $
+          sum
+            (fmap (\currDelta ->
+                    (stepSize * currDelta)/fromIntegral minibatchSize)
+                 delta)
 
     layersAndDeltas :: f (f (Neuron f a), f (f a))
     layersAndDeltas =
@@ -71,17 +104,18 @@ backprop stepSize sigma minibatch layers =
     cwGrads = transpose' $
       -- trace ("cwGrads: " ++ show (shape1 minibatch, shape3 deltas)) $
       zipWithTF
-        (\currInputs currDeltas -> imap (findCWGrad currInputs) currDeltas)
-        (fmap fst minibatch)
+        (\(currInputs, netState) currDeltas -> imap (findCWGrad currInputs netState) currDeltas)
+        (zipTF (fmap fst minibatch) netStates)
         (transpose' deltas)
 
     -- Indexed first by mini-batch index
     deltas :: f (f (f a))
     deltas =
       transpose' $
-      fmap (\(currInputs, currExpected) ->
-                  snd $ mapAccumR (findDeltas currExpected) Nothing (fmap (`denseOutput` currInputs) layers))
-           minibatch
+      zipWithTF (\(currInputs, currExpected) netState ->
+                    snd $ mapAccumR (findDeltas currExpected) Nothing netState)
+                minibatch
+                netStates
 
     findDeltas :: f a
       -> Maybe (f (NeuronState f a), f a)
@@ -91,17 +125,17 @@ backprop stepSize sigma minibatch layers =
       let currDeltas = computeDeltas sigma currExpected currLayer maybeNext
       in (Just (currLayer, currDeltas), currDeltas)
 
-    findCWGrad :: f a -> Int -> f a -> f (f a)
-    findCWGrad currInputs currIx currDeltas =
+    findCWGrad :: f a -> NetState f a -> Int -> f a -> f (f a)
+    findCWGrad currInputs netState currIx currDeltas =
       costWeightGrad currInputs currDeltas
-                     (layers ^? ix (currIx-1))
+                     (netState ^? ix (currIx-1))
 
 -- | In the result: The outermost "container" is indexed by incoming neuron
 -- index (j) and the innermost "container" is indexed by the outgoing neuron
 -- index (k)      (?)
 costWeightGrad :: forall f a. LayerCtx f a =>
   f a -> f a ->
-  Maybe (f (Neuron f a)) ->
+  Maybe (f (NeuronState f a)) ->
   f (f a)
 costWeightGrad inputs currDeltas maybePrevLayer =
   let result = outer currDeltas prevA
@@ -110,7 +144,8 @@ costWeightGrad inputs currDeltas maybePrevLayer =
     prevA =
       case maybePrevLayer of
         Nothing        -> inputs
-        Just prevLayer -> fmap neuronStateOutput $ denseOutput prevLayer inputs
+        Just prevLayer -> fmap neuronStateOutput prevLayer
+        -- Just prevLayer -> fmap neuronStateOutput $ denseOutput prevLayer inputs
         -- Just prevLayer -> fmap neuronStateOutput prevLayer
 
 
