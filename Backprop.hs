@@ -52,7 +52,6 @@ computeNetState net inputs =
 backprop :: forall f a.  (Show a, LayerCtx f a) =>
   Int -> a -> DiffFn -> f (f a, f a) -> f (f (Neuron f a)) -> f (Dense f a)
 backprop minibatchSize stepSize sigma minibatch layers =
-  trace (show (shape3 cwGrads, shape1 layersAndDeltas, shape3 deltas)) $
   zipWithTF processOneLayer cwGrads layersAndDeltas
   where
     -- | Indexed by mini-batch index
@@ -63,46 +62,32 @@ backprop minibatchSize stepSize sigma minibatch layers =
       f (f (f a)) -> (f (Neuron f a), f (f a)) ->
       f (Neuron f a)
     processOneLayer grads (neuronStates, currDeltas) =
-      trace ("processOneLayer: " ++ show (shape3 grads, shape1 neuronStates, shape2 currDeltas)) $
       zipWithTF processNeuron (transpose' grads) (zipTF neuronStates (transpose' currDeltas))
 
     processNeuron :: f (f a) -> (Neuron f a, f a) -> Neuron f a
     processNeuron grads (neuron, delta) =
-      -- trace ("weightsSum shape: " ++ show (shape1 weightsSum))
-      (if (shape1 weightsSum /= shape1 (neuronWeights neuron)) then trace "Shape does not match" else id) $
       Neuron
         { neuronWeights =
-            neuronWeights neuron ^-^ ((stepSize / fromIntegral minibatchSize) *^ weightsSum)
+            neuronWeights neuron ^-^. ((stepSize / fromIntegral minibatchSize) *^ weightsSum)
         , neuronBias    =
             neuronBias neuron - ((stepSize / fromIntegral minibatchSize) * biasSum)
         , neuronActFn = neuronActFn neuron
         }
       where
         weightsSum =
-          -- trace ("neuronWeights shape: " ++ show (shape1 (neuronWeights neuron))) $
-            foldr (^+^) zero $
-              fmap (\currGrads -> 
-                      neuronWeights neuron ^-^ (stepSize *^ currGrads))
-                   grads
+          foldr (^+^) zero grads
 
         biasSum =
-          -- trace ("delta shape: " ++ show (shape1 delta)) $
-          -- traceShowId $
-          sum
-            (fmap (\currDelta ->
-                    (stepSize * currDelta)/fromIntegral minibatchSize)
-                 delta)
+          sum delta
 
     layersAndDeltas :: f (f (Neuron f a), f (f a))
     layersAndDeltas =
-      trace ("layersAndDeltas: " ++ show (shape2 layers, shape3 deltas)) $
       zipTF layers deltas
 
     -- | Indexed by mini-batch index, then by layer, then by incoming neuron, then by outgoing neuron
     -- (?)
     cwGrads :: f (f (f (f a)))
     cwGrads = transpose' $
-      -- trace ("cwGrads: " ++ show (shape1 minibatch, shape3 deltas)) $
       zipWithTF
         (\(currInputs, netState) currDeltas -> imap (findCWGrad currInputs netState) currDeltas)
         (zipTF (fmap fst minibatch) netStates)
@@ -138,8 +123,7 @@ costWeightGrad :: forall f a. LayerCtx f a =>
   Maybe (f (NeuronState f a)) ->
   f (f a)
 costWeightGrad inputs currDeltas maybePrevLayer =
-  let result = outer currDeltas prevA
-  in result
+  outer currDeltas prevA
   where
     prevA =
       case maybePrevLayer of
@@ -172,10 +156,9 @@ computeDeltas sigma expected currLayer maybeNext =
   where
     sigmaDeriv     = diff sigma
 
--- | Hadamard product
-hadamardMat :: (Trace f, Additive f, Num a) => f (f a) -> f (f a) -> f (f a)
-hadamardMat a b = fmap diagonal $ liftI2 outer a b
+(^-^.) :: (Foldable f, Additive f, Num a) => f a -> f a -> f a
+u ^-^. v
+  | length u /= length v = error "^-^.: Lengths of arguments don't match"
+  | otherwise            = u ^-^ v
 
-hadamardVec :: (Foldable f, Trace f, Additive f, Num a) => f a -> f a -> f a
-hadamardVec a b = diagonal $ outer a b
 

@@ -8,7 +8,7 @@ import           Data.Vector (Vector)
 
 import           Control.Monad (replicateM)
 import           Control.Arrow ((&&&))
-import           System.Random
+-- import           System.Random
 
 import           Linear.Trace
 
@@ -19,20 +19,27 @@ import           Linear.Vector
 
 
 import           Net
-import           Dense (softplus, sigmoid, reLU)
+import           Dense --(softplus, sigmoid, reLU)
 import           Backprop (Net, computeNetState)
 import           Parser
 import           Utils
+
+import           System.Random.MWC
+import           Statistics.Distribution
+import           Statistics.Distribution.Normal
 
 imageSize :: Int
 imageSize = 28*28
 
 stepSize :: Double
 -- stepSize = 0.6
-stepSize = 0.2
+stepSize = 0.1
 
-between0and1 :: IO Double
-between0and1 = randomRIO (0,1)
+genWeight :: GenIO -> Int -> IO Double
+genWeight gen numWeights = genContVar (normalDistr 0 (1/sqrt (fromIntegral numWeights))) gen
+
+genBias :: GenIO -> Int -> IO Double
+genBias gen _numWeights = genContVar (normalDistr 0 1) gen
 
 actFn :: Floating a => a -> a
 actFn = sigmoid
@@ -55,7 +62,8 @@ classify v =
 main :: IO ()
 main = do
   -- setStdGen (mkStdGen 200)
-  setStdGen (mkStdGen 203)
+  -- setStdGen (mkStdGen 203)
+  genIO <- createSystemRandom
 
   trainLabels0 <- parseLabels <$> BS.readFile "images/train/train-labels-idx1-ubyte"
   trainImages <- parseImages <$> BS.readFile "images/train/train-images-idx3-ubyte"
@@ -75,27 +83,19 @@ main = do
         = zip (V.toList trainImages) (V.toList trainLabels)
 
   initialNet <-
-    initNet V.replicateM V.fromList imageSize [16, 16, 10] actFn between0and1 between0and1
+    initNet V.replicateM V.fromList imageSize [16, 16, 10] actFn (genWeight genIO) (genBias genIO)
       :: IO (Net Vector Double)
 
-  -- let trainedNet = train 1 stepSize actFn initialNet [V.fromList $ take 6000 trainLabelsAndImages]
   let trainedNet =
-        train 3 stepSize actFn initialNet (take 10 (map V.fromList $ chunksOf 100 trainLabelsAndImages))
+        train 100 stepSize actFn initialNet (map V.fromList $ chunksOf 10 (take 100 trainLabelsAndImages))
+        -- train 500 stepSize actFn initialNet [V.fromList $ take 3 trainLabelsAndImages]
+        -- train 10 stepSize actFn initialNet (take 2 (map V.fromList $ chunksOf 200 trainLabelsAndImages))
 
-  -- print trainedNet
-
-  putStrLn $ "Unique count: " ++ show (length (nub (V.toList sampleTestImages)))
-
-  putStr "A: "
-  print . netStateOutputs $ computeNetState trainedNet (sampleTestImages V.! 0)
-  putStrLn ""
-  putStr "B: "
-  print . netStateOutputs $ computeNetState trainedNet (sampleTestImages V.! 1)
-
-  print $ ((sampleTestImages V.! 0) ^-^ (sampleTestImages V.! 1))
-  -- print $ sampleTestImages V.! 1
-
-  putStr "Test accuracy: "
-  putStr (show (netTestAccuracy classify actFn trainedNet sampleTestImages sampleTestLabels*100))
+  putStr "Training accuracy: "
+  putStr (show (netTestAccuracy classify actFn trainedNet (V.take 100 trainImages) (V.take 100 trainLabels)*100))
   putStrLn "%"
+
+  -- putStr "Test accuracy: "
+  -- putStr (show (netTestAccuracy classify actFn trainedNet sampleTestImages sampleTestLabels*100))
+  -- putStrLn "%"
 

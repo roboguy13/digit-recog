@@ -7,6 +7,8 @@ import           Data.Foldable
 
 import           GHC.Stack
 
+import           Linear.Vector
+
 -- | This function is from:
 -- https://wiki.haskell.org/Foldable_and_Traversable#Generalising_zipWith
 zipWithTF :: forall t f a b c. HasCallStack => (Traversable t, Foldable f) => (a -> b -> c) -> t a -> f b -> t c
@@ -33,4 +35,18 @@ shape3 xs =
 raggedShape2 :: Foldable f => f (f a) -> (Int, [Int])
 raggedShape2 xs =
   (shape1 xs, map length (toList xs))
+
+-- | Hadamard product
+
+hadamardVec :: (Additive f, Num a) => f a -> f a -> f a
+hadamardVec a b = liftI2 (*) a b
+
+-- class Hadamard f where
+--   hadamardVec :: f a -> f a -> f a
+
+-- Some general, but potentially slow, implementations:
+-- hadamardMatGeneral :: (Trace f, Additive f, Num a) => f (f a) -> f (f a) -> f (f a)
+-- hadamardMatGeneral a b = fmap diagonal $ liftI2 outer a b
+-- hadamardVecGeneral :: (Foldable f, Trace f, Additive f, Num a) => f a -> f a -> f a
+-- hadamardVecGeneral a b = diagonal $ outer a b
 

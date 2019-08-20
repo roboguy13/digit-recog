@@ -53,10 +53,10 @@ data NeuronState f a =
     deriving Show
 
 initDense :: (Traversable f, Monad m) =>
-  (forall x. Int -> m x -> m (f x)) -> Int -> Int -> (a -> a) -> m a -> m a -> m (Dense f a)
+  (forall x. Int -> m x -> m (f x)) -> Int -> Int -> (a -> a) -> (Int -> m a) -> (Int -> m a) -> m (Dense f a)
 initDense replicateM' numInputs size activationFn genWeight genBias = do
-  weights <- replicateM' size (replicateM' numInputs genWeight)
-  biases  <- replicateM' size genBias
+  weights <- replicateM' size (replicateM' numInputs (genWeight size))
+  biases  <- replicateM' size (genBias size)
   let neurons = zipWithTF mkNeuron weights biases
   return neurons
   where
@@ -111,11 +111,18 @@ type LayerCtx f a = (Transpose f, Trace f, Index (f (f (NeuronState f a))) ~ Int
 
 class Transpose f where
   transpose' :: f (f a) -> f (f a)
+  asColumn   :: f a -> f (f a)
+  asRow      :: f a -> f (f a)
 
 instance Transpose [] where
   transpose' = transpose
+  asColumn = map (:[])
+  asRow    = (:[])
 
 instance Transpose Vector where
   transpose' m = -- TODO: Write a faster implementation
     V.fromList (fmap V.fromList (transpose (V.toList (fmap V.toList m))))
+
+  asColumn = fmap V.singleton
+  asRow    = V.singleton
 

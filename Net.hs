@@ -32,7 +32,8 @@ import           Utils
 import Debug.Trace
 
 initNet :: (Traversable f, Monad m) =>
-  (forall x. Int -> m x -> m (f x)) -> (forall x. [x] -> f x) -> Int -> f Int -> (a -> a) -> m a -> m a -> m (Net f a)
+  (forall x. Int -> m x -> m (f x)) -> (forall x. [x] -> f x) -> Int -> f Int ->
+  (a -> a) -> (Int -> m a) -> (Int -> m a) -> m (Net f a)
 initNet replicateM' fromList numInputs0 sizes0 activationFn genWeight genBias =
   sequence (fromList (go numInputs0 (toList sizes0)))
   where
