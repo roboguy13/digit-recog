@@ -33,7 +33,7 @@ import Debug.Trace
 
 initNet :: (Traversable f, Monad m) =>
   (forall x. Int -> m x -> m (f x)) -> (forall x. [x] -> f x) -> Int -> f Int ->
-  (a -> a) -> (Int -> m a) -> (Int -> m a) -> m (Net f a)
+  DiffFn -> (Int -> m a) -> (Int -> m a) -> m (Net f a)
 initNet replicateM' fromList numInputs0 sizes0 activationFn genWeight genBias =
   sequence (fromList (go numInputs0 (toList sizes0)))
   where
@@ -50,24 +50,21 @@ netStateOutputs netState =
   fmap neuronStateOutput lastLayer
 
 train :: forall f a. (Show a, LayerCtx f a) =>
-  Int -> a -> DiffFn -> Net f a -> [f (f a, f a)] -> Net f a
-train nPasses stepSize sigma net0 minibatches =
+  Int -> a -> Net f a -> [f (f a, f a)] -> Net f a
+train nPasses stepSize net0 minibatches =
     go nPasses net0
   where
-    go 0       net = net
-    go nPasses net =
-      go (nPasses-1) (onePass net minibatches)
+    go nPasses net = iterate (`onePass` minibatches) net !! nPasses
 
     onePass :: Net f a -> [f (f a, f a)] -> Net f a
-    onePass net [] = net
-    onePass net (currMinibatch:restMinibatches) =
-      onePass (backprop (length currMinibatch) stepSize sigma currMinibatch net) restMinibatches
-    
+    onePass net =
+      foldl' (\currNet minibatch -> backprop (length minibatch) stepSize minibatch currNet)
+             net
 
 -- | Percent accurate of identically correct results
 netTestAccuracy :: (Show (f a), Show (f (f a)), LayerCtx f a, Eq (f a)) =>
-  (f a -> f a) -> DiffFn -> Net f a -> f (f a) -> f (f a) -> Double
-netTestAccuracy classify sigma net testInputs testExpecteds =
+  (f a -> f a) -> Net f a -> f (f a) -> f (f a) -> Double
+netTestAccuracy classify net testInputs testExpecteds =
   foldl' check 0 (zipTF netOutputs testExpecteds) / numTests
   where
     netOutputs = fmap (netStateOutputs . computeNetState net) testInputs

@@ -19,6 +19,9 @@ import           Linear.Vector
 import           Linear.Metric
 import           Linear.Trace
 import           Linear.Matrix hiding (transpose)
+
+import           Numeric.AD.Mode.Reverse
+
 import           Data.List
 
 import           Data.Vector (Vector)
@@ -35,12 +38,13 @@ data Neuron f a =
   Neuron
     { neuronWeights :: f a
     , neuronBias    :: a
-    , neuronActFn   :: a -> a  -- | Activation function
+    , neuronActFn   :: DiffFn  -- | Activation function
+    , neuronActDeriv :: DiffFn
     }
 
 -- | For testing and debugging purposes
 instance (Show a, Show (f a)) => Show (Neuron f a) where
-  show (Neuron ws bs _) = "Neuron (" ++ show ws ++ ", " ++ show bs ++ ")"
+  show (Neuron ws bs _ _) = "Neuron (" ++ show ws ++ ", " ++ show bs ++ ")"
 
 type Dense f a = f (Neuron f a)
 
@@ -53,14 +57,14 @@ data NeuronState f a =
     deriving Show
 
 initDense :: (Traversable f, Monad m) =>
-  (forall x. Int -> m x -> m (f x)) -> Int -> Int -> (a -> a) -> (Int -> m a) -> (Int -> m a) -> m (Dense f a)
+  (forall x. Int -> m x -> m (f x)) -> Int -> Int -> DiffFn -> (Int -> m a) -> (Int -> m a) -> m (Dense f a)
 initDense replicateM' numInputs size activationFn genWeight genBias = do
   weights <- replicateM' size (replicateM' numInputs (genWeight size))
   biases  <- replicateM' size (genBias size)
   let neurons = zipWithTF mkNeuron weights biases
   return neurons
   where
-    mkNeuron ws bs = Neuron ws bs activationFn
+    mkNeuron ws bs = Neuron ws bs activationFn (diff activationFn)
 
 sigmoid :: Floating a => a -> a
 sigmoid x = 1 / (1 + exp (-x))
@@ -84,7 +88,7 @@ densePreactivated denseNeurons inputs =
        denseNeurons
 
 -- | Takes an result from 'densePreactivated' as its argument
-denseActivated :: (Metric f, Floating a) => f (Neuron f a, a) -> f (NeuronState f a)
+denseActivated :: (Metric f, Floating a, Ord a) => f (Neuron f a, a) -> f (NeuronState f a)
 denseActivated = fmap go
   where
     go (neuron@Neuron{neuronActFn}, preact) =
@@ -94,7 +98,7 @@ denseActivated = fmap go
         , neuronStateOutput = neuronActFn preact
         }
 
-denseOutput :: (Metric f, Floating a) => Dense f a -> f a -> f (NeuronState f a)
+denseOutput :: (Metric f, Floating a, Ord a) => Dense f a -> f a -> f (NeuronState f a)
 denseOutput d = denseActivated . densePreactivated d
 
 type LayerCtx f a = (Transpose f, Trace f, Index (f (f (NeuronState f a))) ~ Int, Index (f a) ~ Int,

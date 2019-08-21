@@ -32,8 +32,8 @@ imageSize :: Int
 imageSize = 28*28
 
 stepSize :: Double
--- stepSize = 0.6
-stepSize = 0.1
+stepSize = 0.6
+-- stepSize = 0.15
 
 genWeight :: GenIO -> Int -> IO Double
 genWeight gen numWeights = genContVar (normalDistr 0 (1/sqrt (fromIntegral numWeights))) gen
@@ -87,15 +87,15 @@ main = do
       :: IO (Net Vector Double)
 
   let trainedNet =
-        train 100 stepSize actFn initialNet (map V.fromList $ chunksOf 10 (take 100 trainLabelsAndImages))
+        train 50 stepSize initialNet (map V.fromList $ chunksOf 10 (take 700 trainLabelsAndImages))
         -- train 500 stepSize actFn initialNet [V.fromList $ take 3 trainLabelsAndImages]
         -- train 10 stepSize actFn initialNet (take 2 (map V.fromList $ chunksOf 200 trainLabelsAndImages))
 
   putStr "Training accuracy: "
-  putStr (show (netTestAccuracy classify actFn trainedNet (V.take 100 trainImages) (V.take 100 trainLabels)*100))
+  putStr (show (netTestAccuracy classify trainedNet (V.take 1000 trainImages) (V.take 1000 trainLabels)*100))
   putStrLn "%"
 
-  -- putStr "Test accuracy: "
-  -- putStr (show (netTestAccuracy classify actFn trainedNet sampleTestImages sampleTestLabels*100))
-  -- putStrLn "%"
+  putStr "Test accuracy: "
+  putStr (show (netTestAccuracy classify trainedNet testImages testLabels*100))
+  putStrLn "%"
 

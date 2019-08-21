@@ -36,7 +36,7 @@ type Net      f a = f (Dense f a)
 type NetState f a = f (f (NeuronState f a))
 
 -- Feedforward
-computeNetState :: (Traversable f, Metric f, Floating a, Index (Net f a) ~ Int, IxValue (Net f a) ~ Dense f a, Ixed (Net f a)) =>
+computeNetState :: (Traversable f, Metric f, Floating a, Ord a, Index (Net f a) ~ Int, IxValue (Net f a) ~ Dense f a, Ixed (Net f a)) =>
   Net f a -> f a -> NetState f a
 computeNetState net inputs =
     snd $ mapAccumL go Nothing net
@@ -50,8 +50,8 @@ computeNetState net inputs =
       in (Just currOutputs, currOutputs)
 
 backprop :: forall f a.  (Show a, LayerCtx f a) =>
-  Int -> a -> DiffFn -> f (f a, f a) -> f (f (Neuron f a)) -> f (Dense f a)
-backprop minibatchSize stepSize sigma minibatch layers =
+  Int -> a -> f (f a, f a) -> f (f (Neuron f a)) -> f (Dense f a)
+backprop minibatchSize stepSize minibatch layers =
   zipWithTF processOneLayer cwGrads layersAndDeltas
   where
     -- | Indexed by mini-batch index
@@ -63,26 +63,30 @@ backprop minibatchSize stepSize sigma minibatch layers =
       f (Neuron f a)
     processOneLayer grads (neuronStates, currDeltas) =
       zipWithTF processNeuron (transpose' grads) (zipTF neuronStates (transpose' currDeltas))
+    {-# INLINE processOneLayer #-}
 
     processNeuron :: f (f a) -> (Neuron f a, f a) -> Neuron f a
     processNeuron grads (neuron, delta) =
-      Neuron
+      neuron
         { neuronWeights =
-            neuronWeights neuron ^-^. ((stepSize / fromIntegral minibatchSize) *^ weightsSum)
+            neuronWeights neuron ^-^ ((stepSize / fromIntegral minibatchSize) *^ weightsSum)
         , neuronBias    =
             neuronBias neuron - ((stepSize / fromIntegral minibatchSize) * biasSum)
-        , neuronActFn = neuronActFn neuron
         }
       where
         weightsSum =
           foldr (^+^) zero grads
+        {-# INLINE weightsSum #-}
 
         biasSum =
           sum delta
+        {-# INLINE biasSum #-}
+    {-# INLINE processNeuron #-}
 
     layersAndDeltas :: f (f (Neuron f a), f (f a))
     layersAndDeltas =
       zipTF layers deltas
+    {-# INLINE layersAndDeltas #-}
 
     -- | Indexed by mini-batch index, then by layer, then by incoming neuron, then by outgoing neuron
     -- (?)
@@ -92,6 +96,7 @@ backprop minibatchSize stepSize sigma minibatch layers =
         (\(currInputs, netState) currDeltas -> imap (findCWGrad currInputs netState) currDeltas)
         (zipTF (fmap fst minibatch) netStates)
         (transpose' deltas)
+    {-# INLINE cwGrads #-}
 
     -- Indexed first by mini-batch index
     deltas :: f (f (f a))
@@ -107,13 +112,15 @@ backprop minibatchSize stepSize sigma minibatch layers =
       -> f (NeuronState f a)
       -> (Maybe (f (NeuronState f a), f a), f a)
     findDeltas currExpected maybeNext currLayer =
-      let currDeltas = computeDeltas sigma currExpected currLayer maybeNext
+      let currDeltas = computeDeltas currExpected currLayer maybeNext
       in (Just (currLayer, currDeltas), currDeltas)
+    {-# INLINE findDeltas #-}
 
     findCWGrad :: f a -> NetState f a -> Int -> f a -> f (f a)
     findCWGrad currInputs netState currIx currDeltas =
       costWeightGrad currInputs currDeltas
                      (netState ^? ix (currIx-1))
+    {-# INLINE findCWGrad #-}
 
 -- | In the result: The outermost "container" is indexed by incoming neuron
 -- index (j) and the innermost "container" is indexed by the outgoing neuron
@@ -123,7 +130,7 @@ costWeightGrad :: forall f a. LayerCtx f a =>
   Maybe (f (NeuronState f a)) ->
   f (f a)
 costWeightGrad inputs currDeltas maybePrevLayer =
-  outer currDeltas prevA
+  outerInlined currDeltas prevA
   where
     prevA =
       case maybePrevLayer of
@@ -131,16 +138,16 @@ costWeightGrad inputs currDeltas maybePrevLayer =
         Just prevLayer -> fmap neuronStateOutput prevLayer
         -- Just prevLayer -> fmap neuronStateOutput $ denseOutput prevLayer inputs
         -- Just prevLayer -> fmap neuronStateOutput prevLayer
-
+{-# INLINE costWeightGrad #-}
 
 -- | `maybeNext` is the next layer together with the deltas from the next
 -- layer. `expected` is the expected outputs.
 --
 -- The result is the deltas for the given layer.
 computeDeltas :: forall f a. LayerCtx f a =>
-  DiffFn -> f a ->
+  f a ->
   f (NeuronState f a) -> Maybe (f (NeuronState f a), f a) -> f a
-computeDeltas sigma expected currLayer maybeNext =
+computeDeltas expected currLayer maybeNext =
     case maybeNext of
       Nothing ->  -- We were given the last layer
         let lastOutputs = fmap neuronStateOutput currLayer
@@ -152,13 +159,12 @@ computeDeltas sigma expected currLayer maybeNext =
                                       nextLayer
         in
           hadamardVec (transpose' nextLayerWeightMat !* nextDeltas)
-                      (fmap sigmaDeriv preacts)
-  where
-    sigmaDeriv     = diff sigma
+                      (fmap (\neuronState -> neuronActDeriv (neuronStateNeuron neuronState)
+                                                            (neuronStatePreact neuronState))
+                            currLayer)
 
-(^-^.) :: (Foldable f, Additive f, Num a) => f a -> f a -> f a
-u ^-^. v
-  | length u /= length v = error "^-^.: Lengths of arguments don't match"
-  | otherwise            = u ^-^ v
-
+-- From: http://hackage.haskell.org/package/linear-1.20.9/docs/src/Linear.Vector.html#outer
+outerInlined :: (Functor f, Functor g, Num a) => f a -> g a -> f (g a)
+outerInlined a b = fmap (\x->fmap (*x) b) a
+{-# INLINE outerInlined #-}
 
