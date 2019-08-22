@@ -6,8 +6,8 @@ to fetch the MNIST files from the MNIST server:
 
     % ./fetch-images.sh
 
-Next, the following command will install dependences (in a sandbox), build the
-project with -O2:
+Next, the following command will install dependences (in a sandbox) and build
+the project with -O2:
 
     % cabal new-build --enable-optimization=2
 
