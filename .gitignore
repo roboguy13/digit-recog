@@ -5,3 +5,8 @@
 Main
 images/
 dist/
+*.aux
+*.ps
+*.hp
+.ghc.*
+dist-newstyle/

@@ -3,6 +3,7 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE Strict #-}
 
 module Net where
 
@@ -54,12 +55,14 @@ train :: forall f a. (Show a, LayerCtx f a) =>
 train nPasses stepSize net0 minibatches =
     go nPasses net0
   where
-    go nPasses net = iterate (`onePass` minibatches) net !! nPasses
+    go 0 net = net
+    go n net = go (n-1) (onePass net)
 
-    onePass :: Net f a -> [f (f a, f a)] -> Net f a
+    onePass :: Net f a -> Net f a
     onePass net =
       foldl' (\currNet minibatch -> backprop (length minibatch) stepSize minibatch currNet)
              net
+             minibatches
 
 -- | Percent accurate of identically correct results
 netTestAccuracy :: (Show (f a), Show (f (f a)), LayerCtx f a, Eq (f a)) =>

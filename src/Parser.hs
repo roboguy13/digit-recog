@@ -1,3 +1,5 @@
+{-# LANGUAGE Strict #-}
+
 module Parser (parseImages, parseLabels, oneHotEncode, Matrix) where
 
 import qualified Data.ByteString as BS

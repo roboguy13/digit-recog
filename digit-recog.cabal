@@ -42,10 +42,13 @@ executable digit-recog
                        bytestring,
                        vector,
                        split,
+                       vector-split,
                        linear,
                        lens,
                        ad,
                        mwc-random,
-                       statistics
+                       statistics,
+                       deepseq
   hs-source-dirs:      src
+  -- ghc-options:         -rtsopts -fprof-auto -O2
   default-language:    Haskell2010

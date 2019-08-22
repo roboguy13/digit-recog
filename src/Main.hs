@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedLists #-}
+{-# LANGUAGE Strict #-}
 
 module Main where
 
@@ -12,7 +13,7 @@ import           Control.Arrow ((&&&))
 
 import           Linear.Trace
 
-import           Data.List.Split (chunksOf)
+import           Data.Vector.Split (chunksOf)
 import           Data.List (nub)
 
 import           Linear.Vector
@@ -28,11 +29,14 @@ import           System.Random.MWC
 import           Statistics.Distribution
 import           Statistics.Distribution.Normal
 
+import           Control.DeepSeq (force)
+import           Control.Exception (evaluate)
+
 imageSize :: Int
 imageSize = 28*28
 
 stepSize :: Double
-stepSize = 0.6
+stepSize = 0.1
 -- stepSize = 0.15
 
 genWeight :: GenIO -> Int -> IO Double
@@ -80,22 +84,30 @@ main = do
       sampleTestLabels = V.take testSampleSize testLabels
 
   let trainLabelsAndImages
-        = zip (V.toList trainImages) (V.toList trainLabels)
+        = V.zip trainImages trainLabels
 
   initialNet <-
     initNet V.replicateM V.fromList imageSize [16, 16, 10] actFn (genWeight genIO) (genBias genIO)
       :: IO (Net Vector Double)
 
+  minibatches <- evaluate $ force $ chunksOf 10 (V.take 700 trainLabelsAndImages)
+
+  putStrLn "Minibatches created."
+
   let trainedNet =
-        train 50 stepSize initialNet (map V.fromList $ chunksOf 10 (take 700 trainLabelsAndImages))
+        -- train 50 stepSize initialNet (map V.fromList $ chunksOf 10 (take 700 trainLabelsAndImages))
+        train 50 stepSize initialNet minibatches
+
         -- train 500 stepSize actFn initialNet [V.fromList $ take 3 trainLabelsAndImages]
         -- train 10 stepSize actFn initialNet (take 2 (map V.fromList $ chunksOf 200 trainLabelsAndImages))
 
+  putStrLn "Measuring training set accuracy..."
   putStr "Training accuracy: "
   putStr (show (netTestAccuracy classify trainedNet (V.take 1000 trainImages) (V.take 1000 trainLabels)*100))
   putStrLn "%"
 
+  putStrLn "Measuring testing set accuracy..."
   putStr "Test accuracy: "
-  putStr (show (netTestAccuracy classify trainedNet testImages testLabels*100))
+  putStr (show (netTestAccuracy classify trainedNet sampleTestImages sampleTestLabels*100))
   putStrLn "%"
 
